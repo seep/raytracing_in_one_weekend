@@ -29,18 +29,30 @@ fn background(ray: &Ray) -> Color {
     return DVec3::lerp(COLOR_B, COLOR_T, t);
 }
 
-fn sphere(center: Vec3, radius: f32, ray: &Ray) -> bool {
+fn sphere(center: Vec3, radius: f32, ray: &Ray) -> f32 {
     let oc = ray.origin - center;
     let a = Vec3::dot(ray.direction, ray.direction);
     let b = Vec3::dot(ray.direction, oc) * 2.0;
     let c = Vec3::dot(oc, oc) - radius * radius;
     let discriminant = b * b - 4.0 * a * c;
-    return discriminant > 0.0;
+
+    return if discriminant < 0.0 {
+        -1.0
+    } else {
+        (-b - f32::sqrt(discriminant)) / (a * 2.0)
+    }
 }
 
 fn scene(ray: &Ray) -> Color {
-    if sphere(Vec3::new(0.0, 0.0, -1.0), 0.5, &ray) {
-        return Color::new(1.0, 0.0, 0.0);
+    let sphere_origin = Vec3::NEG_Z;
+    let sphere_radius = 0.5;
+
+    let t = sphere(sphere_origin, sphere_radius, &ray);
+
+    if t > 0.0 {
+        let t_point = ray.at(t);
+        let t_normal = (t_point - sphere_origin).normalize();
+        return ((t_normal + Vec3::ONE) * 0.5).as_dvec3();
     }
 
     return background(&ray);
@@ -70,8 +82,8 @@ fn main() {
     for y in (0..image_h).rev() {
         println!("Scanlines remaining: {}", y);
         for x in (0..image_w).rev() {
-            let u = (x as f32 / (image_w - 1) as f32);
-            let v = (y as f32 / (image_h - 1) as f32);
+            let u = x as f32 / (image_w - 1) as f32;
+            let v = y as f32 / (image_h - 1) as f32;
             let r = Ray::new(origin, llc + scan_h * u + scan_w * v - origin);
             write_color(&mut w, scene(&r));
         }
