@@ -3,6 +3,10 @@ use std::io::Write;
 use std::path::Path;
 use glam::{Vec3, DVec3};
 
+mod sphere;
+
+use sphere::{Sphere};
+
 type Color = DVec3;
 
 struct Ray {
@@ -11,11 +15,18 @@ struct Ray {
 }
 
 impl Ray {
-    #[inline(always)]
-    pub const fn new(origin: Vec3, direction: Vec3) -> Self { Self { origin, direction } }
-
-    #[inline(always)]
+    pub const fn new(origin: Vec3, direction: Vec3) -> Ray { Ray { origin, direction } }
     pub fn at(&self, t: f32) -> Vec3 { self.origin + self.direction * t }
+}
+
+struct Intersection {
+    p: Vec3,
+    normal: Vec3,
+    t: f32,
+}
+
+trait Intersect {
+    fn intersect(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<Intersection>;
 }
 
 fn background(ray: &Ray) -> Color {
@@ -29,70 +40,54 @@ fn background(ray: &Ray) -> Color {
     return DVec3::lerp(COLOR_B, COLOR_T, t);
 }
 
-fn sphere(center: Vec3, radius: f32, ray: &Ray) -> f32 {
-    let oc = ray.origin - center;
-    let a = Vec3::dot(ray.direction, ray.direction);
-    let b = Vec3::dot(ray.direction, oc) * 2.0;
-    let c = Vec3::dot(oc, oc) - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-
-    return if discriminant < 0.0 {
-        -1.0
-    } else {
-        (-b - f32::sqrt(discriminant)) / (a * 2.0)
-    }
-}
-
 fn scene(ray: &Ray) -> Color {
-    let sphere_origin = Vec3::NEG_Z;
-    let sphere_radius = 0.5;
+    let sphere = Sphere::new(Vec3::NEG_Z, 0.5);
+    let intersect = sphere.intersect(ray, 0.0, f32::MAX);
 
-    let t = sphere(sphere_origin, sphere_radius, &ray);
-
-    if t > 0.0 {
-        let t_point = ray.at(t);
-        let t_normal = (t_point - sphere_origin).normalize();
-        return ((t_normal + Vec3::ONE) * 0.5).as_dvec3();
+    if intersect.is_some() {
+        let intersect_unwrapped = intersect.unwrap();
+        return ((intersect_unwrapped.normal + Vec3::ONE) * 0.5).as_dvec3();
     }
 
     return background(&ray);
 }
 
 fn main() {
-    let aspect = 16.0 / 9.0;
-    let image_w = 400;
-    let image_h = (image_w as f32 / aspect) as i32;
+    let path = Path::new("image.ppm");
+    let mut w = File::create(&path).unwrap();
 
-    let viewport_h = 2.0;
-    let viewport_w = viewport_h * aspect;
+    writeln!(&mut w, "P3").unwrap();
+    writeln!(&mut w, "{} {}", IMAGE_W, IMAGE_H).unwrap();
+    writeln!(&mut w, "255").unwrap();
+
+    const ASPECT_RATIO: f32 = 16.0 / 9.0;
+    const IMAGE_W: u64 = 400;
+    const IMAGE_H: u64 = (IMAGE_W as f32 / ASPECT_RATIO) as u64;
+
+    let viewport_h = 2.0 as f32;
+    let viewport_w = (viewport_h * ASPECT_RATIO) as f32;
     let focal_length = 1.0;
 
     let origin = Vec3::ZERO;
     let scan_h = Vec3::new(viewport_w, 0.0, 0.0);
     let scan_w = Vec3::new(0.0, viewport_h, 0.0);
-    let llc = origin - (scan_w * 0.5) - (scan_h * 0.5) - Vec3::new(0.0, 0.0, focal_length);
+    let llc = origin - (scan_h * 0.5) - (scan_w * 0.5) - Vec3::new(0.0, 0.0, focal_length);
 
-    let path = Path::new("image.ppm");
-    let mut w = File::create(&path).unwrap();
-
-    writeln!(&mut w, "P3").unwrap();
-    writeln!(&mut w, "{} {}", image_w, image_h).unwrap();
-    writeln!(&mut w, "255").unwrap();
-
-    for y in (0..image_h).rev() {
+    for y in (0..IMAGE_H).rev() {
         println!("Scanlines remaining: {}", y);
-        for x in (0..image_w).rev() {
-            let u = x as f32 / (image_w - 1) as f32;
-            let v = y as f32 / (image_h - 1) as f32;
+        for x in (0..IMAGE_W).rev() {
+            let u = x as f32 / (IMAGE_W - 1) as f32;
+            let v = y as f32 / (IMAGE_H - 1) as f32;
             let r = Ray::new(origin, llc + scan_h * u + scan_w * v - origin);
-            write_color(&mut w, scene(&r));
+            let c = scene(&r);
+            writeln!(&mut w, "{}", format_color(c)).unwrap();
         }
     }
 }
 
-fn write_color(file: &mut File, color: Color) {
+fn format_color(color: Color) -> String {
     let r = (color.x * 255.999) as i32;
     let g = (color.y * 255.999) as i32;
     let b = (color.z * 255.999) as i32;
-    writeln!(file, "{} {} {}", r, g, b).unwrap();
+    return format!("{} {} {}", r, g, b);
 }
