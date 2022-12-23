@@ -22,6 +22,7 @@ impl Ray {
 struct Intersection {
     p: Vec3,
     normal: Vec3,
+    facing: bool,
     t: f32,
 }
 

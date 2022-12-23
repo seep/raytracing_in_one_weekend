@@ -41,10 +41,9 @@ impl Intersect for Sphere {
         }
 
         let p = r.at(t);
-        let n = (p - self.center) / self.radius;
+        let normal = (p - self.center) / self.radius;
+        let facing = r.direction.dot(normal) < 0.0;
 
-        let intersection = Intersection { p, t, normal: n };
-
-        return Some(intersection);
+        return Some(Intersection { p, t, facing, normal });
     }
 }
