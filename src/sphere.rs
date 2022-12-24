@@ -14,7 +14,7 @@ impl Sphere {
 }
 
 impl Intersect for Sphere {
-    fn intersect(&self, r: &Ray, t_min: f32, t_max:f32) -> Option<Intersection> {
+    fn intersect(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<Intersection> {
         let oc = r.origin - self.center;
         let a = r.direction.length_squared();
         let half_b = Vec3::dot(oc, r.direction);

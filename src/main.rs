@@ -30,6 +30,22 @@ trait Intersect {
     fn intersect(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<Intersection>;
 }
 
+pub type World = Vec<Box<dyn Intersect>>;
+
+fn find_closest_intersection(world: &World, ray: &Ray, t_min: f32, t_max: f32) -> Option<Intersection> {
+    let mut result = None;
+    let mut t_nearest = t_max;
+
+    for obj in world {
+        if let Some(intersection) = obj.intersect(ray, t_min, t_nearest) {
+            t_nearest = intersection.t;
+            result = Some(intersection);
+        }
+    }
+
+    return result;
+}
+
 fn background(ray: &Ray) -> Color {
     const COLOR_T: Color = Color::new(0.5, 0.7, 1.0);
     const COLOR_B: Color = Color::new(1.0, 1.0, 1.0);
@@ -41,16 +57,12 @@ fn background(ray: &Ray) -> Color {
     return DVec3::lerp(COLOR_B, COLOR_T, t);
 }
 
-fn scene(ray: &Ray) -> Color {
-    let sphere = Sphere::new(Vec3::NEG_Z, 0.5);
-    let intersect = sphere.intersect(ray, 0.0, f32::MAX);
-
-    if intersect.is_some() {
-        let intersect_unwrapped = intersect.unwrap();
-        return ((intersect_unwrapped.normal + Vec3::ONE) * 0.5).as_dvec3();
+fn scene(world: &World, ray: &Ray) -> Color {
+    if let Some(intersection) = find_closest_intersection(world, ray, 0.0, f32::MAX) {
+        return ((intersection.normal + Vec3::ONE) * 0.5).as_dvec3();
+    } else {
+        return background(&ray);
     }
-
-    return background(&ray);
 }
 
 fn main() {
@@ -64,6 +76,10 @@ fn main() {
     const ASPECT_RATIO: f32 = 16.0 / 9.0;
     const IMAGE_W: u64 = 400;
     const IMAGE_H: u64 = (IMAGE_W as f32 / ASPECT_RATIO) as u64;
+
+    let mut world = World::new();
+    world.push(Box::new(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5)));
+    world.push(Box::new(Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0)));
 
     let viewport_h = 2.0 as f32;
     let viewport_w = (viewport_h * ASPECT_RATIO) as f32;
@@ -80,7 +96,7 @@ fn main() {
             let u = x as f32 / (IMAGE_W - 1) as f32;
             let v = y as f32 / (IMAGE_H - 1) as f32;
             let r = Ray::new(origin, llc + scan_h * u + scan_w * v - origin);
-            let c = scene(&r);
+            let c = scene(&world, &r);
             writeln!(&mut w, "{}", format_color(c)).unwrap();
         }
     }
