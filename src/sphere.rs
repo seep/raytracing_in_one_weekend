@@ -1,5 +1,5 @@
 use glam::Vec3;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use super::Ray;
 use super::Scatter;
@@ -9,11 +9,11 @@ use super::SurfaceIntersection;
 pub struct Sphere {
     center: Vec3,
     radius: f32,
-    material: Rc<dyn Scatter>,
+    material: Arc<dyn Scatter>,
 }
 
 impl Sphere {
-    pub fn new(center: Vec3, radius: f32, material: Rc<dyn Scatter>) -> Sphere {
+    pub fn new(center: Vec3, radius: f32, material: Arc<dyn Scatter>) -> Sphere {
         return Sphere { center, radius, material };
     }
 }

@@ -1,11 +1,12 @@
 use glam::{DVec3, Vec2, Vec3};
 use rand::Rng;
 use rand_distr::{Distribution, UnitBall, UnitDisc, UnitSphere};
+
 use std::fs::File;
 use std::io::Write;
 use std::ops::Neg;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 
 mod sphere;
 
@@ -31,15 +32,15 @@ pub struct SurfaceIntersection {
     p: Vec3,
     normal: Vec3,
     facing: bool,
-    material: Rc<dyn Scatter>,
+    material: Arc<dyn Scatter>,
     t: f32,
 }
 
-pub trait Surface {
+pub trait Surface: Send + Sync {
     fn raycast(&self, r: &Ray, t_min: f32, t_max: f32) -> Option<SurfaceIntersection>;
 }
 
-pub trait Scatter {
+pub trait Scatter: Send + Sync {
     fn scatter(&self, r: &Ray, intersection: &SurfaceIntersection) -> Option<(Color, Ray)>;
 }
 
@@ -251,7 +252,7 @@ fn create_world() -> World {
     let mut world = World::new();
 
     world.push({
-        let mat = Rc::new(LambertianMaterial::new(Color::new(0.5, 0.5, 0.5)));
+        let mat = Arc::new(LambertianMaterial::new(Color::new(0.5, 0.5, 0.5)));
         let obj = Sphere::new(Vec3::new(0.0, -1000.0, 0.0), 1000.0, mat);
         Box::new(obj)
     });
@@ -262,13 +263,13 @@ fn create_world() -> World {
 
             let mat = if choose < 0.8 {
                 let albedo = (rand_on_unit_sphere() * rand_on_unit_sphere()).as_dvec3();
-                Rc::new(LambertianMaterial::new(albedo)) as Rc<dyn Scatter>
+                Arc::new(LambertianMaterial::new(albedo)) as Arc<dyn Scatter>
             } else if choose < 0.95 {
                 let albedo = (Vec3::splat(0.4) + rand_on_unit_sphere() * 0.6).as_dvec3();
                 let fuzz = rng.gen_range(0.0..0.5);
-                Rc::new(MetalMaterial::new(albedo, fuzz)) as Rc<dyn Scatter>
+                Arc::new(MetalMaterial::new(albedo, fuzz)) as Arc<dyn Scatter>
             } else {
-                Rc::new(DielectricMaterial::new(1.5)) as Rc<dyn Scatter>
+                Arc::new(DielectricMaterial::new(1.5)) as Arc<dyn Scatter>
             };
 
             let center = Vec3::new((a as f32) + rng.gen_range(0.0..0.9), 0.2, (b as f32) + rng.gen_range(0.0..0.9));
@@ -280,19 +281,19 @@ fn create_world() -> World {
     }
 
     world.push({
-        let mat = Rc::new(DielectricMaterial::new(1.5));
+        let mat = Arc::new(DielectricMaterial::new(1.5));
         let obj = Sphere::new(Vec3::new(0.0, 1.0, 0.0), 1.0, mat);
         Box::new(obj)
     });
 
     world.push({
-        let mat = Rc::new(LambertianMaterial::new(Color::new(0.4, 0.2, 0.1)));
+        let mat = Arc::new(LambertianMaterial::new(Color::new(0.4, 0.2, 0.1)));
         let obj = Sphere::new(Vec3::new(-4.0, 1.0, 0.0), 1.0, mat);
         Box::new(obj)
     });
 
     world.push({
-        let mat = Rc::new(MetalMaterial::new(Color::new(0.7, 0.6, 0.5), 0.0));
+        let mat = Arc::new(MetalMaterial::new(Color::new(0.7, 0.6, 0.5), 0.0));
         let obj = Sphere::new(Vec3::new(4.0, 1.0, 0.0), 1.0, mat);
         Box::new(obj)
     });
@@ -335,9 +336,10 @@ fn main() {
 
     for y in (0..IMAGE_H).rev() {
         println!("Scanline {}", y);
-        for x in (0..IMAGE_W) {
+        for x in 0..IMAGE_W {
             let mut c = Color::new(0.0, 0.0, 0.0);
 
+            // random multisampling
             for _ in 0..SAMPLES_PER_PIXEL {
                 let mut rng = rand::thread_rng();
                 let rand_u: f32 = rng.gen();
@@ -351,11 +353,11 @@ fn main() {
             }
 
             // multisample averaging and gamma correction
-            c.x = (c.x / SAMPLES_PER_PIXEL as f64).sqrt().clamp(0.0, 0.999);
-            c.y = (c.y / SAMPLES_PER_PIXEL as f64).sqrt().clamp(0.0, 0.999);
-            c.z = (c.z / SAMPLES_PER_PIXEL as f64).sqrt().clamp(0.0, 0.999);
+            let r = (c.x / SAMPLES_PER_PIXEL as f64).sqrt().clamp(0.0, 0.999);
+            let g = (c.y / SAMPLES_PER_PIXEL as f64).sqrt().clamp(0.0, 0.999);
+            let b = (c.z / SAMPLES_PER_PIXEL as f64).sqrt().clamp(0.0, 0.999);
 
-            writeln!(&mut w, "{}", format_color(c)).unwrap();
+            writeln!(&mut w, "{}", format_color(Color::new(r, g, b))).unwrap();
         }
     }
 }
