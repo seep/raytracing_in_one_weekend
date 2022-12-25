@@ -198,7 +198,10 @@ impl Camera {
         let rand_in_lens_disc = rand_in_unit_disc() * self.aperture * 0.5;
         let offset = self.cu * rand_in_lens_disc.x + self.cv * rand_in_lens_disc.y;
 
-        return Ray::new(self.origin + offset, self.llc + s * self.horizontal + t * self.vertical - offset);
+        return Ray::new(
+            self.origin + offset,
+            self.llc + s * self.horizontal + t * self.vertical - self.origin - offset,
+        );
     }
 }
 
@@ -243,43 +246,75 @@ fn raycast(world: &World, ray: &Ray, depth: u64) -> Color {
     };
 }
 
+fn create_world() -> World {
+    let mut rng = rand::thread_rng();
+    let mut world = World::new();
+
+    world.push({
+        let mat = Rc::new(LambertianMaterial::new(Color::new(0.5, 0.5, 0.5)));
+        let obj = Sphere::new(Vec3::new(0.0, -1000.0, 0.0), 1000.0, mat);
+        Box::new(obj)
+    });
+
+    for a in -11..11 {
+        for b in -11..11 {
+            let choose: f32 = rng.gen();
+
+            let mat = if choose < 0.8 {
+                let albedo = (rand_on_unit_sphere() * rand_on_unit_sphere()).as_dvec3();
+                Rc::new(LambertianMaterial::new(albedo)) as Rc<dyn Scatter>
+            } else if choose < 0.95 {
+                let albedo = (Vec3::splat(0.4) + rand_on_unit_sphere() * 0.6).as_dvec3();
+                let fuzz = rng.gen_range(0.0..0.5);
+                Rc::new(MetalMaterial::new(albedo, fuzz)) as Rc<dyn Scatter>
+            } else {
+                Rc::new(DielectricMaterial::new(1.5)) as Rc<dyn Scatter>
+            };
+
+            let center = Vec3::new((a as f32) + rng.gen_range(0.0..0.9), 0.2, (b as f32) + rng.gen_range(0.0..0.9));
+
+            let obj = Sphere::new(center, 0.2, mat);
+
+            world.push(Box::new(obj));
+        }
+    }
+
+    world.push({
+        let mat = Rc::new(DielectricMaterial::new(1.5));
+        let obj = Sphere::new(Vec3::new(0.0, 1.0, 0.0), 1.0, mat);
+        Box::new(obj)
+    });
+
+    world.push({
+        let mat = Rc::new(LambertianMaterial::new(Color::new(0.4, 0.2, 0.1)));
+        let obj = Sphere::new(Vec3::new(-4.0, 1.0, 0.0), 1.0, mat);
+        Box::new(obj)
+    });
+
+    world.push({
+        let mat = Rc::new(MetalMaterial::new(Color::new(0.7, 0.6, 0.5), 0.0));
+        let obj = Sphere::new(Vec3::new(4.0, 1.0, 0.0), 1.0, mat);
+        Box::new(obj)
+    });
+
+    return world;
+}
+
 fn main() {
-    const ASPECT_RATIO: f32 = 16.0 / 9.0;
+    const ASPECT_RATIO: f32 = 3.0 / 2.0;
     const IMAGE_W: u64 = 400;
     const IMAGE_H: u64 = (IMAGE_W as f32 / ASPECT_RATIO) as u64;
 
-    let path = Path::new("image.ppm");
-    let mut w = File::create(&path).unwrap();
+    const SAMPLES_PER_PIXEL: u64 = 20;
+    const DEPTH: u64 = 5;
 
-    writeln!(&mut w, "P3").unwrap();
-    writeln!(&mut w, "{} {}", IMAGE_W, IMAGE_H).unwrap();
-    writeln!(&mut w, "255").unwrap();
+    let world = create_world();
 
-    let mut world = World::new();
-
-    let mat_ground = Rc::new(LambertianMaterial::new(Color::new(0.8, 0.8, 0.0)));
-    let mat_center = Rc::new(LambertianMaterial::new(Color::new(0.1, 0.2, 0.5)));
-    let mat_left = Rc::new(DielectricMaterial::new(1.5));
-    let mat_left_inner = Rc::new(DielectricMaterial::new(1.5));
-    let mat_right = Rc::new(MetalMaterial::new(Color::new(0.8, 0.6, 0.2), 1.0));
-
-    let sphere_ground = Sphere::new(Vec3::new(0.0, -100.5, -1.0), 100.0, mat_ground);
-    let sphere_center = Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, mat_center);
-    let sphere_left = Sphere::new(Vec3::new(-1.0, 0.0, -1.0), 0.5, mat_left);
-    let sphere_left_inner = Sphere::new(Vec3::new(-1.0, 0.0, -1.0), -0.45, mat_left_inner);
-    let sphere_right = Sphere::new(Vec3::new(1.0, 0.0, -1.0), 0.5, mat_right);
-
-    world.push(Box::new(sphere_ground));
-    world.push(Box::new(sphere_center));
-    world.push(Box::new(sphere_left));
-    world.push(Box::new(sphere_left_inner));
-    world.push(Box::new(sphere_right));
-
-    let camera_origin = Vec3::new(3.0, 3.0, 2.0);
-    let camera_target = Vec3::new(0.0, 0.0, -1.0);
+    let camera_origin = Vec3::new(13.0, 2.0, 3.0);
+    let camera_target = Vec3::new(0.0, 0.0, 0.0);
     let camera_vertical_fov = 20.0;
-    let camera_focal_length = camera_origin.distance(camera_target);
-    let camera_aperture = 2.0;
+    let camera_focal_length = 10.0;
+    let camera_aperture = 0.1;
 
     let camera = Camera::new(
         camera_origin,
@@ -291,16 +326,20 @@ fn main() {
         camera_focal_length,
     );
 
-    const SAMPLES_PER_PIXEL: u64 = 100;
-    const DEPTH: u64 = 5;
+    let path = Path::new("image.ppm");
+    let mut w = File::create(&path).unwrap();
 
-    let mut rng = rand::thread_rng();
+    writeln!(&mut w, "P3").unwrap();
+    writeln!(&mut w, "{} {}", IMAGE_W, IMAGE_H).unwrap();
+    writeln!(&mut w, "255").unwrap();
 
     for y in (0..IMAGE_H).rev() {
-        for x in (0..IMAGE_W).rev() {
+        println!("Scanline {}", y);
+        for x in (0..IMAGE_W) {
             let mut c = Color::new(0.0, 0.0, 0.0);
 
             for _ in 0..SAMPLES_PER_PIXEL {
+                let mut rng = rand::thread_rng();
                 let rand_u: f32 = rng.gen();
                 let rand_v: f32 = rng.gen();
 
