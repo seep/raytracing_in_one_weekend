@@ -1,10 +1,9 @@
-use glam::Vec3;
 use std::sync::Arc;
 
-use super::Ray;
-use super::Scatter;
-use super::Surface;
-use super::SurfaceIntersection;
+use crate::ray::Ray;
+use crate::scatter::Scatter;
+use crate::surface::{Surface, SurfaceIntersection};
+use glam::*;
 
 pub struct Sphere {
     center: Vec3,

@@ -8,3 +8,12 @@ glam = "0.22"
 rayon = "*"
 rand_distr = "*"
 rand = "*"
+
+
+[lib]
+name = "raytracing_in_one_weekend"
+path = "lib/lib.rs"
+
+[[bin]]
+name = "raytracing_in_one_weekend"
+path = "src/main.rs"
